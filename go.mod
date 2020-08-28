@@ -12,3 +12,5 @@ require (
 	github.com/stretchr/testify v1.6.1
 	golang.org/x/sync v0.0.0-20200625203802-6e8e738ad208
 )
+
+replace github.com/coinbase/rosetta-sdk-go v0.3.5-0.20200824221853-d7b1fe2f9239 => github.com/CodaProtocol/rosetta-sdk-go v0.3.5-0.20200827234524-8791ed6f36c0
