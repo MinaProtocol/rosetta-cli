@@ -14,4 +14,4 @@ require (
 	src.techknowlogick.com/xgo v1.1.1-0.20200814033943-12cf2e8194ca // indirect
 )
 
-replace github.com/coinbase/rosetta-sdk-go v0.3.5-0.20200824221853-d7b1fe2f9239 => github.com/CodaProtocol/rosetta-sdk-go v0.3.5-0.20200827234524-8791ed6f36c0
+replace github.com/coinbase/rosetta-sdk-go v0.3.5-0.20200824221853-d7b1fe2f9239 => github.com/CodaProtocol/rosetta-sdk-go v0.3.5-0.20200903180025-a94555f1b459
