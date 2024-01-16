@@ -16,427 +16,128 @@ CLI to validate the correctness of Rosetta API implementations
   <a href="https://github.com/coinbase/rosetta-cli/blob/master/LICENSE.txt"><img src="https://img.shields.io/github/license/coinbase/rosetta-cli.svg" /></a>
 </p>
 
-## Overview
-The `rosetta-cli` is used by developers to test the correctness of their Rosetta
-API implementations. The CLI also provides the ability to look up block contents
-and account balances.
+The `rosetta-cli` tool is used by developers to test the correctness of their Rosetta API implementations. The CLI also provides the ability to look up block contents and account balances.
 
-## Documentation
-Before diving into the CLI, we recommend taking a look at the Rosetta API Docs:
+## Installation
 
-* [Overview](https://www.rosetta-api.org/docs/welcome.html)
-* [Data API](https://www.rosetta-api.org/docs/data_api_introduction.html)
-* [Construction API](https://www.rosetta-api.org/docs/construction_api_introduction.html)
-
-## Install
 To download a binary for the latest release, run:
 ```
 curl -sSfL https://raw.githubusercontent.com/coinbase/rosetta-cli/master/scripts/install.sh | sh -s
 ```
 
-The binary will be installed inside the `./bin` directory (relative to where the install command was run).
+The binary will be installed inside the `./bin` directory (relative to the directory where you ran the installation command).
 
 _Downloading binaries from the Github UI will cause permission errors on Mac._
 
-## Usage
+### Installing in a Custom Location
+To download the binary into a specific directory, run:
 ```
-CLI for the Rosetta API
-
-Usage:
-  rosetta-cli [command]
-
-Available Commands:
-  check:construction           Check the correctness of a Rosetta Construction API Implementation
-  check:data                   Check the correctness of a Rosetta Data API Implementation
-  configuration:create         Create a default configuration file at the provided path
-  configuration:validate       Ensure a configuration file at the provided path is formatted correctly
-  help                         Help about any command
-  utils:asserter-configuration Generate a static configuration file for the Asserter
-  utils:train-zstd             Generate a zstd dictionary for enhanced compression performance
-  version                      Print rosetta-cli version
-  view:account                 View an account balance
-  view:block                   View a block
-  view:networks                View all network statuses
-
-Flags:
-      --configuration-file string   Configuration file that provides connection and test settings.
-                                    If you would like to generate a starter configuration file (populated
-                                    with the defaults), run rosetta-cli configuration:create.
-
-                                    Any fields not populated in the configuration file will be populated with
-                                    default values.
-  -h, --help                        help for rosetta-cli
-
-Use "rosetta-cli [command] --help" for more information about a command.
+curl -sSfL https://raw.githubusercontent.com/coinbase/rosetta-cli/master/scripts/install.sh | sh -s -- -b <relative directory>
 ```
 
-### Configuration
-All `rosetta-cli` parameters are populated from a configuration file (`--configuration-file`)
-provided at runtime. If a configuration file is not provided, the default
-configuration is used. This default configuration can be viewed
-[here](examples/configuration/default.json).
-
-In the `examples/configuration` directory, you can find examples configuration
-files for running tests against a Bitcoin Rosetta implementation
-([config](examples/configuration/bitcoin.json)) and an Ethereum Rosetta
-implementation ([config](examples/configuration/ethereum.json)).
-
-#### Disable Complex Checks
-If you are just getting started with your implementation, you may want
-to disable balance tracking (did any address balance go below zero?) and
-reconciliation (does the balance I calculated match the balance returned
-by the `/account/balance` endpoint?). Take a look at the
-[simple configuration](examples/configuration/simple.json) for an example of
-how to do this.
-
-#### Future Work
-In the near future, we will add support for providing complex exit conditions
-(i.e. did we reach tip? did we reconcile every account?) for both
-`check:construction` and `check:data` so that the `rosetta-cli`
-can be integrated into a CI flow. Currently, the only way to exit with a
-successful status in the `rosetta-cli` is to provide an `--end` flag
-when running `check:data` (returns 0 if no errors up to a block index
-are observed).
-
-### Commands
-#### version
+### Run via Docker
+Running the following command will start a Docker container and present CLI for the Rosetta API.
 ```
-Print rosetta-cli version
-
-Usage:
-  rosetta-cli version [flags]
-
-Flags:
-  -h, --help   help for version
-
-Global Flags:
-      --configuration-file string   Configuration file that provides connection and test settings.
-                                    If you would like to generate a starter configuration file (populated
-                                    with the defaults), run rosetta-cli configuration:create.
-
-                                    Any fields not populated in the configuration file will be populated with
-                                    default values.
+docker run -it [image-name] [command]
 ```
 
-#### check:data
+Example: To validate that the Data API implementation is correct, running the following command will start a Docker container with a data directory at `<working directory>`.
 ```
-Check all server responses are properly constructed, that
-there are no duplicate blocks and transactions, that blocks can be processed
-from genesis to the current block (re-orgs handled automatically), and that
-computed balance changes are equal to balance changes reported by the node.
-
-When re-running this command, it will start where it left off if you specify
-some data directory. Otherwise, it will create a new temporary directory and start
-again from the genesis block. If you want to discard some number of blocks
-populate the --start flag with some block index. Starting from a given index
-can be useful to debug a small range of blocks for issues but it is highly
-recommended you sync from start to finish to ensure all correctness checks
-are performed.
-
-By default, account balances are looked up at specific heights (instead of
-only at the current block). If your node does not support this functionality
-set historical balance disabled to true. This will make reconciliation much
-less efficient but it will still work.
-
-If check fails due to an INACTIVE reconciliation error (balance changed without
-any corresponding operation), the cli will automatically try to find the block
-missing an operation. If historical balance disabled is true, this automatic
-debugging tool does not work.
-
-To debug an INACTIVE account reconciliation error without historical balance lookup,
-set the interesting accounts to the path of a JSON file containing
-accounts that will be actively checked for balance changes at each block. This
-will return an error at the block where a balance change occurred with no
-corresponding operations.
-
-If your blockchain has a genesis allocation of funds and you set
-historical balance disabled to true, you must provide an
-absolute path to a JSON file containing initial balances with the
-bootstrap balance config. You can look at the examples folder for an example
-of what one of these files looks like.
-
-Usage:
-  rosetta-cli check:data [flags]
-
-Flags:
-  -h, --help   help for check:data
-
-Global Flags:
-      --configuration-file string   Configuration file that provides connection and test settings.
-                                    If you would like to generate a starter configuration file (populated
-                                    with the defaults), run rosetta-cli configuration:create.
-
-                                    Any fields not populated in the configuration file will be populated with
-                                    default values.
+docker run -v "$(pwd):/data" -it [image-name] check:data --configuration-file /data/config.json
 ```
 
-##### Status Codes
-If there are no issues found while running `check`, it will exit with a `0` status code.
-If there are any issues, it will exit with a `1` status code. It can be useful
-to run this command as an integration test for any changes to your implementation.
+## Key Sign Tool
+Rosetta CLI comes with a handy key sign tool for local testing. Please refer to this [README](./cmd/README.md) on how to use it.
 
-#### check:construction
-```
-The check:construction command runs an automated test of a
-Construction API implementation by creating and broadcasting transactions
-on a blockchain. In short, this tool generates new addresses, requests
-funds, constructs transactions, signs transactions, broadcasts transactions,
-and confirms transactions land on-chain. At each phase, a series of tests
-are run to ensure that intermediate representations are correct (i.e. does
-an unsigned transaction return a superset of operations provided during
-construction?).
+## Updates and Releases
 
-Check out the https://github.com/coinbase/rosetta-cli/tree/master/examples
-directory for examples of how to configure this test for Bitcoin and
-Ethereum.
+We recommend that you continually update your installation to the latest release as soon as possible. The latest release notes are available in our [Community](https://community.rosetta-api.org) board under the [Release](https://community.rosetta-api.org/c/releases/13) category.
 
-Right now, this tool only supports transfer testing (for both account-based
-and UTXO-based blockchains). However, we plan to add support for testing
-arbitrary scenarios (i.e. staking, governance).
+You can also view releases and change log information in the [Releases](https://github.com/coinbase/rosetta-cli/releases) section of this repository.
 
-Usage:
-  rosetta-cli check:construction [flags]
+## Documentation
 
-Flags:
-  -h, --help   help for check:construction
+You can find the Rosetta API documentation at [rosetta-api.org](https://www.rosetta-api.org/docs/welcome.html)
 
-Global Flags:
-      --configuration-file string   Configuration file that provides connection and test settings.
-                                    If you would like to generate a starter configuration file (populated
-                                    with the defaults), run rosetta-cli configuration:create.
+For more information on the rosetta-cli tool, read our [The rosetta-cli tool](https://www.rosetta-api.org/docs/rosetta_cli.html) documentation.
 
-                                    Any fields not populated in the configuration file will be populated with
-                                    default values.
-```
+For more information on how to test your implementation file with the `rosetta-cli` tool, read our [How to Test Your Rosetta Implementation](https://www.rosetta-api.org/docs/rosetta_test.html) documentation.
 
-#### configuration:create
-```
-Create a default configuration file at the provided path
+Our documentation is divided into the following sections:
 
-Usage:
-  rosetta-cli configuration:create [flags]
+* [Product Overview](https://www.rosetta-api.org/docs/welcome.html)
+* [Getting Started](https://www.rosetta-api.org/docs/getting_started.html)
+* [Rosetta API Spec](https://www.rosetta-api.org/docs/Reference.html)
+* [Testing](https://www.rosetta-api.org/docs/rosetta_cli.html)
+* [Best Practices](https://www.rosetta-api.org/docs/node_deployment.html)
+* [Repositories](https://www.rosetta-api.org/docs/rosetta_specifications.html)
 
-Flags:
-  -h, --help   help for configuration:create
+## Contributing
 
-Global Flags:
-      --configuration-file string   Configuration file that provides connection and test settings.
-                                    If you would like to generate a starter configuration file (populated
-                                    with the defaults), run rosetta-cli configuration:create.
+You may contribute to the `rosetta-cli` project in various ways:
 
-                                    Any fields not populated in the configuration file will be populated with
-                                    default values.
-```
+* [Asking Questions](CONTRIBUTING.md/#asking-questions)
+* [Providing Feedback](CONTRIBUTING.md/#providing-feedback)
+* [Reporting Issues](CONTRIBUTING.md/#reporting-issues)
 
-#### configuration:validate
-```
-Validate the correctness of a configuration file at the provided path
+Read our [Contributing](CONTRIBUTING.MD) documentation for more information.
 
-Usage:
-  rosetta-cli configuration:validate [flags]
+## rosetta-cli Tool Development
 
-Flags:
-  -h, --help   help for configuration:validate
+While working on improvements to this repository, we recommend that you use these commands to check your code:
 
-Global Flags:
-      --configuration-file string   Configuration file that provides connection and test settings.
-                                    If you would like to generate a starter configuration file (populated
-                                    with the defaults), run rosetta-cli configuration:create.
-
-                                    Any fields not populated in the configuration file will be populated with
-                                    default values.
-```
-
-#### view:networks
-```
-While debugging a Data API implementation, it can be very
-useful to view network(s) status. This command fetches the network
-status from all available networks and prints it to the terminal.
-
-If this command errors, it is likely because the /network/* endpoints are
-not formatted correctly.
-
-Usage:
-  rosetta-cli view:networks [flags]
-
-Flags:
-  -h, --help   help for view:networks
-
-Global Flags:
-      --configuration-file string   Configuration file that provides connection and test settings.
-                                    If you would like to generate a starter configuration file (populated
-                                    with the defaults), run rosetta-cli configuration:create.
-
-                                    Any fields not populated in the configuration file will be populated with
-                                    default values.
-```
-
-#### view:account
-```
-While debugging, it is often useful to inspect the state
-of an account at a certain block. This command allows you to look up
-any account by providing a JSON representation of a types.AccountIdentifier
-(and optionally a height to perform the query).
-
-For example, you could run view:account '{"address":"interesting address"}' 1000
-to lookup the balance of an interesting address at block 1000. Allowing the
-address to specified as JSON allows for querying by SubAccountIdentifier.
-
-Usage:
-  rosetta-cli view:account [flags]
-
-Flags:
-  -h, --help   help for view:account
-
-Global Flags:
-      --configuration-file string   Configuration file that provides connection and test settings.
-                                    If you would like to generate a starter configuration file (populated
-                                    with the defaults), run rosetta-cli configuration:create.
-
-                                    Any fields not populated in the configuration file will be populated with
-                                    default values.
-```
-
-#### view:block
-```
-While debugging a Data API implementation, it can be very
-useful to inspect block contents. This command allows you to fetch any
-block by index to inspect its contents. It uses the
-fetcher (https://github.com/coinbase/rosetta-sdk-go/tree/master/fetcher) package
-to automatically get all transactions in the block and assert the format
-of the block is correct before printing.
-
-If this command errors, it is likely because the block you are trying to
-fetch is formatted incorrectly.
-
-Usage:
-  rosetta-cli view:block [flags]
-
-Flags:
-  -h, --help   help for view:block
-
-Global Flags:
-      --configuration-file string   Configuration file that provides connection and test settings.
-                                    If you would like to generate a starter configuration file (populated
-                                    with the defaults), run rosetta-cli configuration:create.
-
-                                    Any fields not populated in the configuration file will be populated with
-                                    default values.
-```
-
-#### utils:asserter-configuration
-```
-In production deployments, it is useful to initialize the response
-Asserter (https://github.com/coinbase/rosetta-sdk-go/tree/master/asserter) using
-a static configuration instead of intializing a configuration dynamically
-from the node. This allows a client to error on new types/statuses that may
-have been added in an update instead of silently erroring.
-
-To use this command, simply provide an absolute path as the argument for where
-the configuration file should be saved (in JSON).
-
-Usage:
-  rosetta-cli utils:asserter-configuration [flags]
-
-Flags:
-  -h, --help   help for utils:asserter-configuration
-
-Global Flags:
-      --configuration-file string   Configuration file that provides connection and test settings.
-                                    If you would like to generate a starter configuration file (populated
-                                    with the defaults), run rosetta-cli configuration:create.
-
-                                    Any fields not populated in the configuration file will be populated with
-                                    default values.
-```
-
-#### utils:train-zstd
-```
-Zstandard (https://github.com/facebook/zstd) is used by
-rosetta-sdk-go/storage to compress data stored to disk. It is possible
-to improve compression performance by training a dictionary on a particular
-storage namespace. This command runs this training and outputs a dictionary
-that can be used with rosetta-sdk-go/storage.
-
-The arguments for this command are:
-<namespace> <database path> <dictionary path> <max items> (<existing dictionary path>)
-
-You can learn more about dictionary compression on the Zstandard
-website: https://github.com/facebook/zstd#the-case-for-small-data-compression
-
-Usage:
-  rosetta-cli utils:train-zstd [flags]
-
-Flags:
-  -h, --help   help for utils:train-zstd
-
-Global Flags:
-      --configuration-file string   Configuration file that provides connection and test settings.
-                                    If you would like to generate a starter configuration file (populated
-                                    with the defaults), run rosetta-cli configuration:create.
-
-                                    Any fields not populated in the configuration file will be populated with
-                                    default values.
-```
-
-## Development
 * `make deps` to install dependencies
 * `make test` to run tests
 * `make lint` to lint the source code (included generated code)
 * `make release` to run one last check before opening a PR
 * `make compile version=RELEASE_TAG` to generate binaries
 
+If you are developing on both the `rosetta-cli` and `rosetta-sdk-go` repositories, use [go.mod replace](https://golang.org/ref/mod#go-mod-file-replace) to reference local changes:
+```
+replace "github.com/coinbase/rosetta-sdk-go" v0.6.8 => "<PATH TO LOCAL rosetta-sdk-go>"
+```
+### Release
+* When we release a new rosetta-cli version, please update the version number to follow [PR](https://github.com/coinbase/rosetta-cli/pull/334) so that `rosetta-cli version` command can print the correct value.
+* Create binaries and upload all the binaries in the new release tag (e.g. https://github.com/coinbase/rosetta-cli/releases/tag/v0.7.7)
+    * Ensure `$GOPATH/bin` is added to `$PATH`
+    * Run `make compile version=<New Version>`
+    * All the binaries will be created in the `bin` folder and should have extension as `tar.gz` and new version number
+
 ### Helper/Handler
-Many of the packages use a `Helper/Handler` interface pattern to acquire
-required information or to send events to some client implementation. An example
-of this is in the `reconciler` package where a `Helper` is used to get
-the account balance and the `Handler` is called to incidate whether the
-reconciliation of an account was successful.
+Many of the packages use a `Helper/Handler` interface pattern to acquire required information or to send events to some client implementation. An example of this is in the `reconciler` package where a `Helper` is used to get the account balance and the `Handler` is called to indicate whether the reconciliation of an account was successful.
 
 ### Repo Structure
 ```
 cmd
 examples // examples of different config files
-internal
+pkg
   logger // logic to write syncing information to stdout/files
   processor // Helper/Handler implementations for reconciler, storage, and syncer
-  storage // persists block to temporary storage and allows for querying balances
-  utils // useful functions
+  tester // test orchestrators
 ```
 
-## Correctness Checks
-This tool performs a variety of correctness checks using the Rosetta Server. If
-any correctness check fails, the CLI will exit and print out a detailed
-message explaining the error.
+### Troubleshooting
 
-### Response Correctness
-The validator uses the autogenerated [Go Client package](https://github.com/coinbase/rosetta-sdk-go)
-to communicate with the Rosetta Server and assert that responses adhere
-to the Rosetta interface specification.
+While running the `check:data` or `check:construction` option, if you get the following error:
 
-### Duplicate Hashes
-The validator checks that a block hash or transaction hash is
-never duplicated.
+```dial tcp 127.0.0.1:8080: socket: too many open files: unable to sync to 1902533: unable to sync to 1902533```
+    
+Please run the `ulimit -n 10000` command to increase the max concurrent opened file limit.
 
-### Non-negative Balances
-The validator checks that an account balance does not go
-negative from any operations.
+_Note: MacOS users, if you face  `ulimit: setrlimit failed: invalid argument` error while setting `ulimit`, please run `sudo launchctl limit maxfiles 10000 200000` before setting the `ulimit`._
 
-### Balance Reconciliation
-#### Active Addresses
-The CLI checks that the balance of an account computed by
-its operations is equal to the balance of the account according
-to the node. If this balance is not identical, the CLI will
-exit.
+## Related Projects
 
-#### Inactive Addresses
-The CLI randomly checks the balances of accounts that aren't
-involved in any transactions. The balances of accounts could change
-on the blockchain node without being included in an operation
-returned by the Rosetta Data API. Recall that all balance-changing
-operations should be returned by the Rosetta Data API.
+* [`rosetta-sdk-go`](https://github.com/coinbase/rosetta-sdk-go) — The `rosetta-sdk-go` SDK provides a collection of packages used for interaction with the Rosetta API specification. Much of the SDK code is generated from this, the [`rosetta-specifications`](https://github.com/coinbase/rosetta-specifications) repository.
+* [`rosetta-specifications`](https://github.com/coinbase/rosetta-specifications) — The `rosetta-specifications` repository generates the SDK code in the [`rosetta-sdk-go`](https://github.com/coinbase/rosetta-sdk-go) repository.
+
+### Reference Implementations
+
+To help you with examples, we developed complete Rosetta API reference implementations for [Bitcoin](https://github.com/coinbase/rosetta-bitcoin) and [Ethereum](https://github.com/coinbase/rosetta-ethereum). Developers of Bitcoin-like or Ethereum-like blockchains may find it easier to fork these reference implementations than to write an implementation from scratch.
+
+You can also find community implementations for a variety of blockchains in the [rosetta-ecosystem](https://github.com/coinbase/rosetta-ecosystem) repository, and in the [ecosystem category](https://community.rosetta-api.org/c/ecosystem) of our community site. 
+
 
 ## License
 This project is available open source under the terms of the [Apache 2.0 License](https://opensource.org/licenses/Apache-2.0).
-
-© 2020 Coinbase
+© 2022 Coinbase

@@ -15,12 +15,14 @@
 package cmd
 
 import (
-	"context"
+	"fmt"
 	"log"
 	"path"
 	"strconv"
 
-	"github.com/coinbase/rosetta-sdk-go/storage"
+	"github.com/coinbase/rosetta-sdk-go/storage/database"
+	"github.com/coinbase/rosetta-sdk-go/storage/encoder"
+	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 )
 
@@ -43,25 +45,23 @@ The arguments for this command are:
 
 You can learn more about dictionary compression on the Zstandard
 website: https://github.com/facebook/zstd#the-case-for-small-data-compression`,
-		Run:  runTrainZstdCmd,
+		RunE: runTrainZstdCmd,
 		Args: cobra.MinimumNArgs(trainArgs),
 	}
 )
 
-func runTrainZstdCmd(cmd *cobra.Command, args []string) {
-	ctx := context.Background()
-
+func runTrainZstdCmd(cmd *cobra.Command, args []string) error {
 	namespace := args[0]
 	databasePath := path.Clean(args[1])
 	dictionaryPath := path.Clean(args[2])
 	maxItems, err := strconv.Atoi(args[3])
 	if err != nil {
-		log.Fatalf("%s: unable to convert max items to integer", err.Error())
+		return fmt.Errorf("unable to convert max items to integer: %w", err)
 	}
 
-	compressorEntries := []*storage.CompressorEntry{}
+	compressorEntries := []*encoder.CompressorEntry{}
 	if len(args) > trainArgs {
-		compressorEntries = append(compressorEntries, &storage.CompressorEntry{
+		compressorEntries = append(compressorEntries, &encoder.CompressorEntry{
 			Namespace:      namespace,
 			DictionaryPath: args[4],
 		})
@@ -71,8 +71,8 @@ func runTrainZstdCmd(cmd *cobra.Command, args []string) {
 
 	log.Printf("Running zstd training (this could take a while)...")
 
-	_, _, err = storage.BadgerTrain(
-		ctx,
+	_, _, err = database.BadgerTrain(
+		Context,
 		namespace,
 		databasePath,
 		dictionaryPath,
@@ -80,6 +80,9 @@ func runTrainZstdCmd(cmd *cobra.Command, args []string) {
 		compressorEntries,
 	)
 	if err != nil {
-		log.Fatal(err)
+		return fmt.Errorf("badger training failed: %w", err)
 	}
+
+	color.Green("Training successful!")
+	return nil
 }

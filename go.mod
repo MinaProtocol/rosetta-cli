@@ -1,17 +1,20 @@
 module github.com/coinbase/rosetta-cli
 
-go 1.13
+go 1.16
 
 require (
-	github.com/coinbase/rosetta-sdk-go v0.3.5-0.20200901205702-b739db12905a
-	github.com/fatih/color v1.9.0
-	github.com/jinzhu/copier v0.0.0-20190924061706-b57f9002281a
-	github.com/olekukonko/tablewriter v0.0.2-0.20190409134802-7e037d187b0c
-	github.com/spf13/cobra v1.0.0
-	github.com/spf13/pflag v1.0.5 // indirect
-	github.com/stretchr/testify v1.6.1
-	golang.org/x/sync v0.0.0-20200625203802-6e8e738ad208
-	src.techknowlogick.com/xgo v1.1.1-0.20200814033943-12cf2e8194ca // indirect
+	github.com/coinbase/rosetta-sdk-go v0.8.3
+	github.com/coinbase/rosetta-sdk-go/types v1.0.0
+	github.com/fatih/color v1.13.0
+	github.com/google/go-cmp v0.5.6 // indirect
+	github.com/mattn/go-colorable v0.1.12 // indirect
+	github.com/olekukonko/tablewriter v0.0.5
+	github.com/pkg/errors v0.9.1
+	github.com/spf13/cobra v1.4.0
+	github.com/stretchr/testify v1.7.2
+	go.uber.org/zap v1.21.0
+	golang.org/x/sync v0.0.0-20210220032951-036812b2e83c
+	google.golang.org/protobuf v1.27.1 // indirect
 )
 
 replace github.com/coinbase/rosetta-sdk-go v0.3.5-0.20200824221853-d7b1fe2f9239 => github.com/CodaProtocol/rosetta-sdk-go v0.3.5-0.20200903180025-a94555f1b459

@@ -17,27 +17,32 @@ package processor
 import (
 	"context"
 	"fmt"
+	"math/big"
 
 	"github.com/coinbase/rosetta-sdk-go/asserter"
 	"github.com/coinbase/rosetta-sdk-go/fetcher"
 	"github.com/coinbase/rosetta-sdk-go/parser"
-	"github.com/coinbase/rosetta-sdk-go/reconciler"
-	"github.com/coinbase/rosetta-sdk-go/storage"
+	"github.com/coinbase/rosetta-sdk-go/storage/database"
+	"github.com/coinbase/rosetta-sdk-go/storage/modules"
+	"github.com/coinbase/rosetta-sdk-go/syncer"
 	"github.com/coinbase/rosetta-sdk-go/types"
 	"github.com/coinbase/rosetta-sdk-go/utils"
 )
 
-var _ storage.BalanceStorageHelper = (*BalanceStorageHelper)(nil)
+var _ modules.BalanceStorageHelper = (*BalanceStorageHelper)(nil)
 
 // BalanceStorageHelper implements the storage.Helper
 // interface.
 type BalanceStorageHelper struct {
-	network *types.NetworkIdentifier
-	fetcher *fetcher.Fetcher
+	network        *types.NetworkIdentifier
+	fetcher        *fetcher.Fetcher
+	counterStorage *modules.CounterStorage
 
 	// Configuration settings
 	lookupBalanceByBlock bool
 	exemptAccounts       map[string]struct{}
+	balanceExemptions    []*types.BalanceExemption
+	initialFetchDisabled bool
 
 	// Interesting-only Parsing
 	interestingOnly      bool
@@ -48,25 +53,37 @@ type BalanceStorageHelper struct {
 func NewBalanceStorageHelper(
 	network *types.NetworkIdentifier,
 	fetcher *fetcher.Fetcher,
+	counterStorage *modules.CounterStorage,
 	lookupBalanceByBlock bool,
-	exemptAccounts []*reconciler.AccountCurrency,
+	exemptAccounts []*types.AccountCurrency,
 	interestingOnly bool,
+	balanceExemptions []*types.BalanceExemption,
+	initialFetchDisabled bool,
 ) *BalanceStorageHelper {
 	exemptMap := map[string]struct{}{}
 
 	// Pre-process exemptAccounts on initialization
 	// to provide fast lookup while syncing.
 	for _, account := range exemptAccounts {
-		exemptMap[types.Hash(account)] = struct{}{}
+		// if users do not specify Currency, we add the address
+		// by this, all the Currencies in this address will be skipped
+		if account.Currency == nil {
+			exemptMap[account.Account.Address] = struct{}{}
+		} else {
+			exemptMap[types.Hash(account)] = struct{}{}
+		}
 	}
 
 	return &BalanceStorageHelper{
 		network:              network,
 		fetcher:              fetcher,
+		counterStorage:       counterStorage,
 		lookupBalanceByBlock: lookupBalanceByBlock,
 		exemptAccounts:       exemptMap,
 		interestingAddresses: map[string]struct{}{},
 		interestingOnly:      interestingOnly,
+		balanceExemptions:    balanceExemptions,
+		initialFetchDisabled: initialFetchDisabled,
 	}
 }
 
@@ -78,9 +95,9 @@ func (h *BalanceStorageHelper) AccountBalance(
 	ctx context.Context,
 	account *types.AccountIdentifier,
 	currency *types.Currency,
-	block *types.BlockIdentifier,
+	lookupBlock *types.BlockIdentifier,
 ) (*types.Amount, error) {
-	if !h.lookupBalanceByBlock {
+	if !h.lookupBalanceByBlock || h.initialFetchDisabled {
 		return &types.Amount{
 			Value:    "0",
 			Currency: currency,
@@ -90,16 +107,22 @@ func (h *BalanceStorageHelper) AccountBalance(
 	// In the case that we are syncing from arbitrary height,
 	// we may need to recover the balance of an account to
 	// perform validations.
-	amount, _, _, err := utils.CurrencyBalance(
+	amount, block, err := utils.CurrencyBalance(
 		ctx,
 		h.network,
 		h.fetcher,
 		account,
 		currency,
-		block,
+		lookupBlock.Index,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("%w: unable to get currency balance", err)
+		return nil, fmt.Errorf("unable to get balance of currency %s for account %s: %w", types.PrintStruct(currency), types.PrintStruct(account), err)
+	}
+
+	// If the returned balance block does not match the intended
+	// block a re-org could've occurred.
+	if types.Hash(lookupBlock) != types.Hash(block) {
+		return nil, syncer.ErrOrphanHead
 	}
 
 	return &types.Amount{
@@ -127,8 +150,14 @@ func (h *BalanceStorageHelper) ExemptFunc() parser.ExemptOperation {
 				return true
 			}
 		}
+		// if exemptAccounts have the Account address means all the
+		// currencies in this Account address need to be skipped
+		_, existsAddress := h.exemptAccounts[op.Account.Address]
+		if existsAddress {
+			return existsAddress
+		}
 
-		thisAcct := types.Hash(&reconciler.AccountCurrency{
+		thisAcct := types.Hash(&types.AccountCurrency{
 			Account:  op.Account,
 			Currency: op.Amount.Currency,
 		})
@@ -136,4 +165,25 @@ func (h *BalanceStorageHelper) ExemptFunc() parser.ExemptOperation {
 		_, exists := h.exemptAccounts[thisAcct]
 		return exists
 	}
+}
+
+// BalanceExemptions returns a list of *types.BalanceExemption.
+func (h *BalanceStorageHelper) BalanceExemptions() []*types.BalanceExemption {
+	return h.balanceExemptions
+}
+
+// AccountsReconciled returns the total accounts reconciled by count.
+func (h *BalanceStorageHelper) AccountsReconciled(
+	ctx context.Context,
+	dbTx database.Transaction,
+) (*big.Int, error) {
+	return h.counterStorage.GetTransactional(ctx, dbTx, modules.ReconciledAccounts)
+}
+
+// AccountsSeen returns the total accounts seen by count.
+func (h *BalanceStorageHelper) AccountsSeen(
+	ctx context.Context,
+	dbTx database.Transaction,
+) (*big.Int, error) {
+	return h.counterStorage.GetTransactional(ctx, dbTx, modules.SeenAccounts)
 }

@@ -17,13 +17,12 @@ package processor
 import (
 	"testing"
 
-	"github.com/coinbase/rosetta-sdk-go/reconciler"
 	"github.com/coinbase/rosetta-sdk-go/types"
 	"github.com/stretchr/testify/assert"
 )
 
 var (
-	opAmountCurrency = &reconciler.AccountCurrency{
+	opAmountCurrency = &types.AccountCurrency{
 		Account: &types.AccountIdentifier{
 			Address: "hello",
 		},
@@ -36,12 +35,12 @@ var (
 
 func TestExemptFuncExemptAccounts(t *testing.T) {
 	var tests = map[string]struct {
-		exemptAccounts []*reconciler.AccountCurrency
+		exemptAccounts []*types.AccountCurrency
 		exempt         bool
 	}{
 		"no exempt accounts": {},
 		"account not exempt": {
-			exemptAccounts: []*reconciler.AccountCurrency{
+			exemptAccounts: []*types.AccountCurrency{
 				{
 					Account: &types.AccountIdentifier{
 						Address: "addr1",
@@ -57,7 +56,7 @@ func TestExemptFuncExemptAccounts(t *testing.T) {
 			},
 		},
 		"account is exempt": {
-			exemptAccounts: []*reconciler.AccountCurrency{
+			exemptAccounts: []*types.AccountCurrency{
 				{
 					Account: &types.AccountIdentifier{
 						Address: "addr1",
@@ -81,8 +80,11 @@ func TestExemptFuncExemptAccounts(t *testing.T) {
 			helper := NewBalanceStorageHelper(
 				nil,
 				nil,
+				nil,
 				false,
 				test.exemptAccounts,
+				false,
+				nil,
 				false,
 			)
 
@@ -122,9 +124,12 @@ func TestExemptFuncInterestingParsing(t *testing.T) {
 			helper := NewBalanceStorageHelper(
 				nil,
 				nil,
+				nil,
 				false,
 				nil,
 				true,
+				nil,
+				false,
 			)
 
 			for _, addr := range test.interestingAddresses {

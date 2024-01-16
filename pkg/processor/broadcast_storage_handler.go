@@ -18,23 +18,26 @@ import (
 	"context"
 	"fmt"
 	"math/big"
+	"reflect"
 
 	"github.com/coinbase/rosetta-cli/configuration"
 
 	"github.com/coinbase/rosetta-sdk-go/constructor/coordinator"
 	"github.com/coinbase/rosetta-sdk-go/parser"
-	"github.com/coinbase/rosetta-sdk-go/storage"
+	"github.com/coinbase/rosetta-sdk-go/storage/database"
+	"github.com/coinbase/rosetta-sdk-go/storage/modules"
 	"github.com/coinbase/rosetta-sdk-go/types"
 )
 
-var _ storage.BroadcastStorageHandler = (*BroadcastStorageHandler)(nil)
+var _ modules.BroadcastStorageHandler = (*BroadcastStorageHandler)(nil)
 
 // BroadcastStorageHandler is invoked whenever a block is added
 // or removed from block storage so that balance changes
 // can be sent to other functions (ex: reconciler).
 type BroadcastStorageHandler struct {
 	config         *configuration.Configuration
-	counterStorage *storage.CounterStorage
+	blockStorage   *modules.BlockStorage
+	counterStorage *modules.CounterStorage
 	coordinator    *coordinator.Coordinator
 	parser         *parser.Parser
 }
@@ -42,12 +45,14 @@ type BroadcastStorageHandler struct {
 // NewBroadcastStorageHandler returns a new *BroadcastStorageHandler.
 func NewBroadcastStorageHandler(
 	config *configuration.Configuration,
-	counterStorage *storage.CounterStorage,
+	blockStorage *modules.BlockStorage,
+	counterStorage *modules.CounterStorage,
 	coordinator *coordinator.Coordinator,
 	parser *parser.Parser,
 ) *BroadcastStorageHandler {
 	return &BroadcastStorageHandler{
 		config:         config,
+		blockStorage:   blockStorage,
 		counterStorage: counterStorage,
 		coordinator:    coordinator,
 		parser:         parser,
@@ -58,20 +63,42 @@ func NewBroadcastStorageHandler(
 // last time at a block height < current block height - confirmationDepth.
 func (h *BroadcastStorageHandler) TransactionConfirmed(
 	ctx context.Context,
-	dbTx storage.DatabaseTransaction,
+	dbTx database.Transaction,
 	identifier string,
 	blockIdentifier *types.BlockIdentifier,
 	transaction *types.Transaction,
 	intent []*types.Operation,
+	intentMetadata map[string]interface{},
 ) error {
-	if err := h.parser.ExpectedOperations(intent, transaction.Operations, false, true); err != nil {
-		return fmt.Errorf("%w: confirmed transaction did not match intent", err)
+	_, _, relatedTransactions, err := h.blockStorage.FindRelatedTransactions(ctx, transaction.TransactionIdentifier, dbTx)
+	if err != nil {
+		return fmt.Errorf("failed to find related transactions %s: %w", types.PrintStruct(transaction.TransactionIdentifier), err)
+	}
+
+	observed := transaction.Operations
+	for _, relatedTransaction := range relatedTransactions {
+		observed = append(observed, relatedTransaction.Operations...)
+	}
+
+	if err := h.parser.ExpectedOperations(intent, observed, false, true); err != nil {
+		return fmt.Errorf("confirmed transaction did not match intent: %w", err)
+	}
+
+	// Validate destination memo if it's needed
+	if intentMemo, found := intentMetadata["memo"]; found {
+		if observedMemo, found := transaction.Metadata["memo"]; found {
+			if !reflect.DeepEqual(intentMemo, observedMemo) {
+				return fmt.Errorf("observed destination memo did not match intent destination memo, observed destination memo: %v, intent destination memo: %v", observedMemo, intentMemo)
+			}
+		} else {
+			return fmt.Errorf("observed destination memo did not found, observed destination memo: %v, intent destination memo: %v", observedMemo, intentMemo)
+		}
 	}
 
 	_, _ = h.counterStorage.UpdateTransactional(
 		ctx,
 		dbTx,
-		storage.TransactionsConfirmedCounter,
+		modules.TransactionsConfirmedCounter,
 		big.NewInt(1),
 	)
 
@@ -81,7 +108,7 @@ func (h *BroadcastStorageHandler) TransactionConfirmed(
 		identifier,
 		transaction,
 	); err != nil {
-		return fmt.Errorf("%w: coordinator could not handle transaction", err)
+		return fmt.Errorf("coordinator could not handle transaction: %w", err)
 	}
 
 	return nil
@@ -92,14 +119,14 @@ func (h *BroadcastStorageHandler) TransactionConfirmed(
 // current block height - last broadcast > staleDepth.
 func (h *BroadcastStorageHandler) TransactionStale(
 	ctx context.Context,
-	dbTx storage.DatabaseTransaction,
+	dbTx database.Transaction,
 	identifier string,
 	transactionIdentifier *types.TransactionIdentifier,
 ) error {
 	_, _ = h.counterStorage.UpdateTransactional(
 		ctx,
 		dbTx,
-		storage.StaleBroadcastsCounter,
+		modules.StaleBroadcastsCounter,
 		big.NewInt(1),
 	)
 
@@ -110,7 +137,7 @@ func (h *BroadcastStorageHandler) TransactionStale(
 // put it over the provided broadcast limit.
 func (h *BroadcastStorageHandler) BroadcastFailed(
 	ctx context.Context,
-	dbTx storage.DatabaseTransaction,
+	dbTx database.Transaction,
 	identifier string,
 	transactionIdentifier *types.TransactionIdentifier,
 	intent []*types.Operation,
@@ -118,7 +145,7 @@ func (h *BroadcastStorageHandler) BroadcastFailed(
 	_, _ = h.counterStorage.UpdateTransactional(
 		ctx,
 		dbTx,
-		storage.FailedBroadcastsCounter,
+		modules.FailedBroadcastsCounter,
 		big.NewInt(1),
 	)
 
@@ -128,7 +155,7 @@ func (h *BroadcastStorageHandler) BroadcastFailed(
 		identifier,
 		nil,
 	); err != nil {
-		return fmt.Errorf("%w: coordinator could not handle transaction", err)
+		return fmt.Errorf("coordinator could not handle transaction: %w", err)
 	}
 
 	if h.config.Construction.IgnoreBroadcastFailures {

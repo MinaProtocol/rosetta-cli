@@ -15,16 +15,17 @@
 package cmd
 
 import (
-	"context"
 	"fmt"
-	"log"
 	"strconv"
 	"time"
+
+	cliErrs "github.com/coinbase/rosetta-cli/pkg/errors"
 
 	"github.com/coinbase/rosetta-sdk-go/fetcher"
 	"github.com/coinbase/rosetta-sdk-go/parser"
 	"github.com/coinbase/rosetta-sdk-go/types"
 	"github.com/coinbase/rosetta-sdk-go/utils"
+	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 )
 
@@ -41,23 +42,52 @@ of the block is correct before printing.
 
 If this command errors, it is likely because the block you are trying to
 fetch is formatted incorrectly.`,
-		Run:  runViewBlockCmd,
+		RunE: runViewBlockCmd,
 		Args: cobra.ExactArgs(1),
 	}
 )
 
-func runViewBlockCmd(cmd *cobra.Command, args []string) {
-	ctx := context.Background()
+func printChanges(balanceChanges []*parser.BalanceChange) error {
+	for _, balanceChange := range balanceChanges {
+		parsedDiff, err := types.BigInt(balanceChange.Difference)
+		if err != nil {
+			return fmt.Errorf("unable to parse balance change difference: %w", err)
+		}
+
+		if parsedDiff.Sign() == 0 {
+			continue
+		}
+
+		fmt.Println(
+			types.PrintStruct(balanceChange.Account),
+			"->",
+			utils.PrettyAmount(parsedDiff, balanceChange.Currency),
+		)
+	}
+
+	return nil
+}
+
+func runViewBlockCmd(_ *cobra.Command, args []string) error {
 	index, err := strconv.ParseInt(args[0], 10, 64)
 	if err != nil {
-		log.Fatal(fmt.Errorf("%w: unable to parse index %s", err, args[0]))
+		return fmt.Errorf("unable to parse index %s: %w", args[0], err)
 	}
 
 	// Create a new fetcher
+	fetcherOpts := []fetcher.Option{
+		fetcher.WithMaxConnections(Config.MaxOnlineConnections),
+		fetcher.WithRetryElapsedTime(time.Duration(Config.RetryElapsedTime) * time.Second),
+		fetcher.WithTimeout(time.Duration(Config.HTTPTimeout) * time.Second),
+		fetcher.WithMaxRetries(Config.MaxRetries),
+	}
+	if Config.ForceRetry {
+		fetcherOpts = append(fetcherOpts, fetcher.WithForceRetry())
+	}
+
 	newFetcher := fetcher.New(
 		Config.OnlineURL,
-		fetcher.WithRetryElapsedTime(time.Duration(Config.RetryElapsedTime)*time.Second),
-		fetcher.WithTimeout(time.Duration(Config.HTTPTimeout)*time.Second),
+		fetcherOpts...,
 	)
 
 	// Initialize the fetcher's asserter
@@ -65,14 +95,14 @@ func runViewBlockCmd(cmd *cobra.Command, args []string) {
 	// Behind the scenes this makes a call to get the
 	// network status and uses the response to inform
 	// the asserter what are valid responses.
-	_, _, fetchErr := newFetcher.InitializeAsserter(ctx, Config.Network)
+	_, _, fetchErr := newFetcher.InitializeAsserter(Context, Config.Network, Config.ValidationFile)
 	if fetchErr != nil {
-		log.Fatal(fetchErr.Err)
+		return fmt.Errorf("unable to initialize asserter for fetcher: %w", fetchErr.Err)
 	}
 
-	_, err = utils.CheckNetworkSupported(ctx, Config.Network, newFetcher)
+	_, err = utils.CheckNetworkSupported(Context, Config.Network, newFetcher)
 	if err != nil {
-		log.Fatalf("%s: unable to confirm network is supported", err.Error())
+		return fmt.Errorf("unable to confirm network %s is supported: %w", types.PrintStruct(Config.Network), err)
 	}
 
 	// Fetch the specified block with retries (automatically
@@ -85,34 +115,76 @@ func runViewBlockCmd(cmd *cobra.Command, args []string) {
 	// to fully populate the block by fetching all these
 	// transactions.
 	block, fetchErr := newFetcher.BlockRetry(
-		ctx,
+		Context,
 		Config.Network,
 		&types.PartialBlockIdentifier{
 			Index: &index,
 		},
 	)
 	if fetchErr != nil {
-		log.Fatal(fmt.Errorf("%w: unable to fetch block", fetchErr.Err))
+		return fmt.Errorf("unable to fetch block %d: %w", index, fetchErr.Err)
+	}
+	// It's valid for a block to be omitted without triggering an error
+	if block == nil {
+		return cliErrs.ErrBlockNotFound
 	}
 
-	log.Printf("Current Block: %s\n", types.PrettyPrintStruct(block))
+	fmt.Printf("\n")
+	if !OnlyChanges {
+		color.Cyan("Current Block:")
+		fmt.Println(types.PrettyPrintStruct(block))
+	}
 
 	// Print out all balance changes in a given block. This does NOT exempt
 	// any operations/accounts from parsing.
-	p := parser.New(newFetcher.Asserter, func(*types.Operation) bool { return false })
-	changes, err := p.BalanceChanges(ctx, block, false)
+	color.Cyan("Balance Changes:")
+	p := parser.New(newFetcher.Asserter, func(*types.Operation) bool { return false }, nil)
+	balanceChanges, err := p.BalanceChanges(Context, block, false)
 	if err != nil {
-		log.Fatal(fmt.Errorf("%w: unable to calculate balance changes", err))
+		return fmt.Errorf("unable to calculate balance changes: %w", err)
 	}
 
-	log.Printf("Balance Changes: %s\n", types.PrettyPrintStruct(changes))
+	fmt.Println("Cumulative:", block.BlockIdentifier.Hash)
 
-	// Print out all OperationGroups for each transaction in a block.
+	if err := printChanges(balanceChanges); err != nil {
+		return err
+	}
+
+	fmt.Printf("\n")
+
+	// Print out balance changes by transaction hash
+	//
+	// TODO: modify parser to allow for calculating balance
+	// changes for a single transaction.
 	for _, tx := range block.Transactions {
-		log.Printf(
-			"Transaction %s Operation Groups: %s\n",
-			tx.TransactionIdentifier.Hash,
-			types.PrettyPrintStruct(parser.GroupOperations(tx)),
-		)
+		balanceChanges, err := p.BalanceChanges(Context, &types.Block{
+			Transactions: []*types.Transaction{
+				tx,
+			},
+		}, false)
+		if err != nil {
+			return fmt.Errorf("unable to calculate balance changes: %w", err)
+		}
+
+		fmt.Println("Transaction:", tx.TransactionIdentifier.Hash)
+
+		if err := printChanges(balanceChanges); err != nil {
+			return err
+		}
+		fmt.Printf("\n")
 	}
+
+	if !OnlyChanges {
+		// Print out all OperationGroups for each transaction in a block.
+		color.Cyan("Operation Groups:")
+		for _, tx := range block.Transactions {
+			fmt.Printf(
+				"Transaction %s Operation Groups: %s\n",
+				tx.TransactionIdentifier.Hash,
+				types.PrettyPrintStruct(parser.GroupOperations(tx)),
+			)
+		}
+	}
+
+	return nil
 }

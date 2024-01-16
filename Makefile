@@ -7,20 +7,24 @@
 # it is necessary to use `go run <pkg>`. Running `go get` does
 # not install any binaries that could be used to run
 # the commands directly.
-ADDLICENSE_CMD=go run github.com/google/addlicense
-ADDLICENCE_SCRIPT=${ADDLICENSE_CMD} -c "Coinbase, Inc." -l "apache" -v
-GOLINES_CMD=go run github.com/segmentio/golines
-GOVERALLS_CMD=go run github.com/mattn/goveralls
-COVERAGE_TEST_DIRECTORIES=./configuration/... ./pkg/constructor/... \
-	./pkg/logger/... ./pkg/scenario/...
-TEST_SCRIPT=go test -v ./pkg/... ./configuration/...
+ADDLICENSE_INSTALL=go install github.com/google/addlicense@latest
+ADDLICENSE_CMD=addlicense
+ADDLICENSE_IGNORE=-ignore ".github/**/*" -ignore ".idea/**/*"
+ADDLICENCE_SCRIPT=${ADDLICENSE_CMD} -c "Coinbase, Inc." -l "apache" -v ${ADDLICENSE_IGNORE}
+GOLINES_INSTALL=go install github.com/segmentio/golines@latest
+GOLINES_CMD=golines
+GOVERALLS_INSTALL=go install github.com/mattn/goveralls@latest
+GOVERALLS_CMD=goveralls
+COVERAGE_TEST_DIRECTORIES=./configuration/... ./pkg/results/... \
+	./pkg/logger/... ./cmd
+TEST_SCRIPT=go test -v ./pkg/... ./configuration/... ./cmd
 COVERAGE_TEST_SCRIPT=go test -v ${COVERAGE_TEST_DIRECTORIES}
 
 deps:
 	go get ./...
 
 lint:
-	golangci-lint run -v \
+	golangci-lint run --timeout 2m0s -v \
 		-E golint,misspell,gocyclo,whitespace,goconst,gocritic,gocognit,bodyclose,unconvert,lll,unparam,gomnd;
 
 format:
@@ -30,8 +34,6 @@ check-format:
 	! gofmt -s -l . | read;
 
 validate-configuration-files:
-	go run main.go configuration:validate examples/configuration/bitcoin.json;
-	go run main.go configuration:validate examples/configuration/ethereum.json;
 	go run main.go configuration:validate examples/configuration/simple.json;
 	go run main.go configuration:create examples/configuration/default.json;
 	go run main.go configuration:validate examples/configuration/default.json;
@@ -40,16 +42,20 @@ validate-configuration-files:
 test: | validate-configuration-files
 	${TEST_SCRIPT}
 
-test-cover:	
+test-cover:
+	${GOVERALLS_INSTALL}
 	if [ "${COVERALLS_TOKEN}" ]; then ${COVERAGE_TEST_SCRIPT} -coverprofile=c.out -covermode=count; ${GOVERALLS_CMD} -coverprofile=c.out -repotoken ${COVERALLS_TOKEN}; fi
 
 add-license:
+	${ADDLICENSE_INSTALL}
 	${ADDLICENCE_SCRIPT} .
 
 check-license:
+	${ADDLICENSE_INSTALL}
 	${ADDLICENCE_SCRIPT} -check .
 
 shorten-lines:
+	${GOLINES_INSTALL}
 	${GOLINES_CMD} -w --shorten-comments pkg cmd configuration
 
 salus:
@@ -57,6 +63,7 @@ salus:
 
 release: add-license shorten-lines format test lint salus
 
+# This command is to generate multi-platform binaries.
 compile:
 	./scripts/compile.sh $(version)
 
@@ -65,8 +72,3 @@ build:
 
 install:
 	go install ./...
-
-mocks:
-	rm -rf mocks;
-	mockery --dir pkg/constructor --all --case underscore --outpkg constructor --output mocks/constructor;
-	${ADDLICENCE_SCRIPT} .;

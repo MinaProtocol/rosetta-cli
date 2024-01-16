@@ -16,38 +16,44 @@ package processor
 
 import (
 	"context"
+	"fmt"
+	"math/big"
 
 	"github.com/coinbase/rosetta-cli/pkg/logger"
 
 	"github.com/coinbase/rosetta-sdk-go/parser"
 	"github.com/coinbase/rosetta-sdk-go/reconciler"
-	"github.com/coinbase/rosetta-sdk-go/storage"
+	"github.com/coinbase/rosetta-sdk-go/storage/database"
+	"github.com/coinbase/rosetta-sdk-go/storage/modules"
 	"github.com/coinbase/rosetta-sdk-go/types"
 )
 
-var _ storage.BalanceStorageHandler = (*BalanceStorageHandler)(nil)
+var _ modules.BalanceStorageHandler = (*BalanceStorageHandler)(nil)
 
 // BalanceStorageHandler is invoked whenever a block is added
 // or removed from block storage so that balance changes
 // can be sent to other functions (ex: reconciler).
 type BalanceStorageHandler struct {
-	logger     *logger.Logger
-	reconciler *reconciler.Reconciler
+	logger         *logger.Logger
+	reconciler     *reconciler.Reconciler
+	counterStorage *modules.CounterStorage
 
 	reconcile          bool
-	interestingAccount *reconciler.AccountCurrency
+	interestingAccount *types.AccountCurrency
 }
 
 // NewBalanceStorageHandler returns a new *BalanceStorageHandler.
 func NewBalanceStorageHandler(
 	logger *logger.Logger,
 	reconciler *reconciler.Reconciler,
+	counterStorage *modules.CounterStorage,
 	reconcile bool,
-	interestingAccount *reconciler.AccountCurrency,
+	interestingAccount *types.AccountCurrency,
 ) *BalanceStorageHandler {
 	return &BalanceStorageHandler{
 		logger:             logger,
 		reconciler:         reconciler,
+		counterStorage:     counterStorage,
 		reconcile:          reconcile,
 		interestingAccount: interestingAccount,
 	}
@@ -73,7 +79,7 @@ func (h *BalanceStorageHandler) BlockAdded(
 	if h.interestingAccount != nil {
 		var interestingChange *parser.BalanceChange
 		for _, change := range changes {
-			if types.Hash(&reconciler.AccountCurrency{
+			if types.Hash(&types.AccountCurrency{
 				Account:  change.Account,
 				Currency: change.Currency,
 			}) == types.Hash(h.interestingAccount) {
@@ -104,5 +110,41 @@ func (h *BalanceStorageHandler) BlockRemoved(
 
 	// We only attempt to reconciler changes when blocks are added,
 	// not removed
+	return nil
+}
+
+// AccountsReconciled updates the total accounts reconciled by count.
+func (h *BalanceStorageHandler) AccountsReconciled(
+	ctx context.Context,
+	dbTx database.Transaction,
+	count int,
+) error {
+	_, err := h.counterStorage.UpdateTransactional(
+		ctx,
+		dbTx,
+		modules.ReconciledAccounts,
+		big.NewInt(int64(count)),
+	)
+	if err != nil {
+		return fmt.Errorf("failed to update the total accounts reconciled by count: %w", err)
+	}
+	return nil
+}
+
+// AccountsSeen updates the total accounts seen by count.
+func (h *BalanceStorageHandler) AccountsSeen(
+	ctx context.Context,
+	dbTx database.Transaction,
+	count int,
+) error {
+	_, err := h.counterStorage.UpdateTransactional(
+		ctx,
+		dbTx,
+		modules.SeenAccounts,
+		big.NewInt(int64(count)),
+	)
+	if err != nil {
+		return fmt.Errorf("failed to update the total accounts seen by count: %w", err)
+	}
 	return nil
 }

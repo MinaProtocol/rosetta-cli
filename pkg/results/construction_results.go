@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package tester
+package results
 
 import (
 	"context"
@@ -21,9 +21,11 @@ import (
 	"os"
 	"strconv"
 
+	pkgError "github.com/pkg/errors"
+
 	"github.com/coinbase/rosetta-cli/configuration"
 
-	"github.com/coinbase/rosetta-sdk-go/storage"
+	"github.com/coinbase/rosetta-sdk-go/storage/modules"
 	"github.com/coinbase/rosetta-sdk-go/types"
 	"github.com/coinbase/rosetta-sdk-go/utils"
 	"github.com/fatih/color"
@@ -51,8 +53,10 @@ func (c *CheckConstructionResults) Print() {
 	}
 
 	fmt.Printf("\n")
-	c.Stats.Print()
-	fmt.Printf("\n")
+	if c.Stats != nil {
+		c.Stats.Print()
+		fmt.Printf("\n")
+	}
 }
 
 // Output writes CheckConstructionResults to the provided
@@ -61,7 +65,7 @@ func (c *CheckConstructionResults) Output(path string) {
 	if len(path) > 0 {
 		writeErr := utils.SerializeAndWrite(path, c)
 		if writeErr != nil {
-			log.Printf("%s: unable to save results\n", writeErr.Error())
+			log.Printf("unable to save results: %s\n", writeErr.Error())
 		}
 	}
 }
@@ -71,8 +75,8 @@ func (c *CheckConstructionResults) Output(path string) {
 func ComputeCheckConstructionResults(
 	cfg *configuration.Configuration,
 	err error,
-	counterStorage *storage.CounterStorage,
-	jobStorage *storage.JobStorage,
+	counterStorage *modules.CounterStorage,
+	jobStorage *modules.JobStorage,
 ) *CheckConstructionResults {
 	ctx := context.Background()
 	stats := ComputeCheckConstructionStats(ctx, cfg, counterStorage, jobStorage)
@@ -81,7 +85,7 @@ func ComputeCheckConstructionResults(
 	}
 
 	if err != nil {
-		results.Error = err.Error()
+		results.Error = fmt.Sprintf("%+v", err)
 
 		// We never want to populate an end condition
 		// if there was an error!
@@ -167,38 +171,38 @@ func (c *CheckConstructionStats) Print() {
 func ComputeCheckConstructionStats(
 	ctx context.Context,
 	config *configuration.Configuration,
-	counters *storage.CounterStorage,
-	jobs *storage.JobStorage,
+	counters *modules.CounterStorage,
+	jobs *modules.JobStorage,
 ) *CheckConstructionStats {
 	if counters == nil || jobs == nil {
 		return nil
 	}
 
-	transactionsCreated, err := counters.Get(ctx, storage.TransactionsCreatedCounter)
+	transactionsCreated, err := counters.Get(ctx, modules.TransactionsCreatedCounter)
 	if err != nil {
 		log.Printf("%s cannot get transactions created counter\n", err.Error())
 		return nil
 	}
 
-	transactionsConfirmed, err := counters.Get(ctx, storage.TransactionsConfirmedCounter)
+	transactionsConfirmed, err := counters.Get(ctx, modules.TransactionsConfirmedCounter)
 	if err != nil {
 		log.Printf("%s cannot get transactions confirmed counter\n", err.Error())
 		return nil
 	}
 
-	staleBroadcasts, err := counters.Get(ctx, storage.StaleBroadcastsCounter)
+	staleBroadcasts, err := counters.Get(ctx, modules.StaleBroadcastsCounter)
 	if err != nil {
 		log.Printf("%s cannot get stale broadcasts counter\n", err)
 		return nil
 	}
 
-	failedBroadcasts, err := counters.Get(ctx, storage.FailedBroadcastsCounter)
+	failedBroadcasts, err := counters.Get(ctx, modules.FailedBroadcastsCounter)
 	if err != nil {
 		log.Printf("%s cannot get failed broadcasts counter\n", err.Error())
 		return nil
 	}
 
-	addressesCreated, err := counters.Get(ctx, storage.AddressesCreatedCounter)
+	addressesCreated, err := counters.Get(ctx, modules.AddressesCreatedCounter)
 	if err != nil {
 		log.Printf("%s cannot get addresses created counter\n", err.Error())
 		return nil
@@ -225,23 +229,94 @@ func ComputeCheckConstructionStats(
 	}
 }
 
-// ExitConstruction exits check:data, logs the test results to the console,
+// CheckConstructionProgress contains the number of
+// currently broadcasting transactions and processing
+// jobs.
+type CheckConstructionProgress struct {
+	Broadcasting int `json:"broadcasting"`
+	Processing   int `json:"processing"`
+}
+
+// ComputeCheckConstructionProgress computes
+// *CheckConstructionProgress.
+func ComputeCheckConstructionProgress(
+	ctx context.Context,
+	broadcasts *modules.BroadcastStorage,
+	jobs *modules.JobStorage,
+) *CheckConstructionProgress {
+	inflight, err := broadcasts.GetAllBroadcasts(ctx)
+	if err != nil {
+		log.Printf("%s cannot get all broadcasts\n", err.Error())
+		return nil
+	}
+
+	processing, err := jobs.AllProcessing(ctx)
+	if err != nil {
+		log.Printf("%s cannot get all jobs\n", err.Error())
+		return nil
+	}
+
+	return &CheckConstructionProgress{
+		Broadcasting: len(inflight),
+		Processing:   len(processing),
+	}
+}
+
+// CheckConstructionStatus contains CheckConstructionStats.
+type CheckConstructionStatus struct {
+	Stats    *CheckConstructionStats    `json:"stats"`
+	Progress *CheckConstructionProgress `json:"progress"`
+}
+
+// ComputeCheckConstructionStatus returns a populated
+// *CheckConstructionStatus.
+func ComputeCheckConstructionStatus(
+	ctx context.Context,
+	config *configuration.Configuration,
+	counters *modules.CounterStorage,
+	broadcasts *modules.BroadcastStorage,
+	jobs *modules.JobStorage,
+) *CheckConstructionStatus {
+	return &CheckConstructionStatus{
+		Stats:    ComputeCheckConstructionStats(ctx, config, counters, jobs),
+		Progress: ComputeCheckConstructionProgress(ctx, broadcasts, jobs),
+	}
+}
+
+// FetchCheckConstructionStatus fetches *CheckConstructionStatus.
+func FetchCheckConstructionStatus(url string) (*CheckConstructionStatus, error) {
+	var status CheckConstructionStatus
+	if err := JSONFetch(url, &status); err != nil {
+		return nil, fmt.Errorf("unable to fetch check construction status: %w", err)
+	}
+
+	return &status, nil
+}
+
+// ExitConstruction exits check:construction, logs the test results to the console,
 // and to a provided output path.
 func ExitConstruction(
 	config *configuration.Configuration,
-	counterStorage *storage.CounterStorage,
-	jobStorage *storage.JobStorage,
+	counterStorage *modules.CounterStorage,
+	jobStorage *modules.JobStorage,
 	err error,
-	status int,
-) {
+) error {
+	if !config.ErrorStackTraceDisabled {
+		err = pkgError.WithStack(err)
+	}
+
 	results := ComputeCheckConstructionResults(
 		config,
 		err,
 		counterStorage,
 		jobStorage,
 	)
-	results.Print()
-	results.Output(config.Construction.ResultsOutputFile)
+	if results != nil {
+		results.Print()
+		if config.Construction != nil {
+			results.Output(config.Construction.ResultsOutputFile)
+		}
+	}
 
-	os.Exit(status)
+	return err
 }

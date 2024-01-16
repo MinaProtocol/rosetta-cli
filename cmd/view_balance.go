@@ -15,7 +15,6 @@
 package cmd
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -31,73 +30,82 @@ import (
 
 var (
 	viewAccountCmd = &cobra.Command{
-		Use:   "view:account",
+		Use:   "view:balance",
 		Short: "View an account balance",
 		Long: `While debugging, it is often useful to inspect the state
 of an account at a certain block. This command allows you to look up
 any account by providing a JSON representation of a types.AccountIdentifier
 (and optionally a height to perform the query).
 
-For example, you could run view:account '{"address":"interesting address"}' 1000
+For example, you could run view:balance '{"address":"interesting address"}' 1000
 to lookup the balance of an interesting address at block 1000. Allowing the
 address to specified as JSON allows for querying by SubAccountIdentifier.`,
-		Run:  runViewAccountCmd,
+		RunE: runViewBalanceCmd,
 		Args: cobra.MinimumNArgs(1),
 	}
 )
 
-func runViewAccountCmd(cmd *cobra.Command, args []string) {
-	ctx := context.Background()
-
+func runViewBalanceCmd(cmd *cobra.Command, args []string) error {
 	account := &types.AccountIdentifier{}
 	if err := json.Unmarshal([]byte(args[0]), account); err != nil {
-		log.Fatal(fmt.Errorf("%w: unable to unmarshal account %s", err, args[0]))
+		return fmt.Errorf("unable to unmarshal account %s: %w", args[0], err)
 	}
 
 	if err := asserter.AccountIdentifier(account); err != nil {
-		log.Fatal(fmt.Errorf("%w: invalid account identifier %+v", err, account))
+		return fmt.Errorf("invalid account identifier %s: %w", types.PrintStruct(account), err)
 	}
 
 	// Create a new fetcher
+	fetcherOpts := []fetcher.Option{
+		fetcher.WithMaxConnections(Config.MaxOnlineConnections),
+		fetcher.WithRetryElapsedTime(time.Duration(Config.RetryElapsedTime) * time.Second),
+		fetcher.WithTimeout(time.Duration(Config.HTTPTimeout) * time.Second),
+		fetcher.WithMaxRetries(Config.MaxRetries),
+	}
+	if Config.ForceRetry {
+		fetcherOpts = append(fetcherOpts, fetcher.WithForceRetry())
+	}
+
 	newFetcher := fetcher.New(
 		Config.OnlineURL,
-		fetcher.WithRetryElapsedTime(time.Duration(Config.RetryElapsedTime)*time.Second),
-		fetcher.WithTimeout(time.Duration(Config.HTTPTimeout)*time.Second),
+		fetcherOpts...,
 	)
 
 	// Initialize the fetcher's asserter
-	_, _, fetchErr := newFetcher.InitializeAsserter(ctx, Config.Network)
+	_, _, fetchErr := newFetcher.InitializeAsserter(Context, Config.Network, Config.ValidationFile)
 	if fetchErr != nil {
-		log.Fatal(fetchErr.Err)
+		return fmt.Errorf("unable to initialize asserter for fetcher: %w", fetchErr.Err)
 	}
 
-	_, err := utils.CheckNetworkSupported(ctx, Config.Network, newFetcher)
+	_, err := utils.CheckNetworkSupported(Context, Config.Network, newFetcher)
 	if err != nil {
-		log.Fatalf("%s: unable to confirm network is supported", err.Error())
+		return fmt.Errorf("unable to confirm network %s is supported: %w", types.PrintStruct(Config.Network), err)
 	}
 
 	var lookupBlock *types.PartialBlockIdentifier
 	if len(args) > 1 {
 		index, err := strconv.ParseInt(args[1], 10, 64)
 		if err != nil {
-			log.Fatal(fmt.Errorf("%w: unable to parse index %s", err, args[0]))
+			return fmt.Errorf("unable to parse index %s: %w", args[0], err)
 		}
 
 		lookupBlock = &types.PartialBlockIdentifier{Index: &index}
 	}
 
-	block, amounts, coins, metadata, fetchErr := newFetcher.AccountBalanceRetry(
-		ctx,
+	block, amounts, metadata, fetchErr := newFetcher.AccountBalanceRetry(
+		Context,
 		Config.Network,
 		account,
 		lookupBlock,
+		nil,
 	)
 	if fetchErr != nil {
-		log.Fatal(fmt.Errorf("%w: unable to fetch account %+v", fetchErr.Err, account))
+		return fmt.Errorf("unable to fetch account balance for account %s: %w", types.PrintStruct(account), fetchErr.Err)
 	}
 
 	log.Printf("Amounts: %s\n", types.PrettyPrintStruct(amounts))
-	log.Printf("Coins: %s\n", types.PrettyPrintStruct(coins))
 	log.Printf("Metadata: %s\n", types.PrettyPrintStruct(metadata))
 	log.Printf("Balance Fetched At: %s\n", types.PrettyPrintStruct(block))
+
+	return nil
 }
