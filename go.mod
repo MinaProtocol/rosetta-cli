@@ -17,4 +17,4 @@ require (
 	google.golang.org/protobuf v1.27.1 // indirect
 )
 
-replace github.com/coinbase/rosetta-sdk-go v0.3.5-0.20200824221853-d7b1fe2f9239 => github.com/CodaProtocol/rosetta-sdk-go v0.3.5-0.20200903180025-a94555f1b459
+replace github.com/coinbase/rosetta-sdk-go v0.8.3 => github.com/MinaProtocol/rosetta-sdk-go v0.8.4-0.20230823112643-14c2b4dfa32a
