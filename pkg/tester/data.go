@@ -422,7 +422,7 @@ func InitializeData(
 		// We only need to bootstrap balances when we run this test from
 		// genesis block. If it is not genesis block, we use the balances from
 		// previous block
-		if (config.Data.StartIndex == nil || *config.Data.StartIndex == genesisBlock.Index) &&
+		if (config.Data.StartIndex == nil || *config.Data.StartIndex == 1) &&
 			len(config.Data.BootstrapBalances) > 0 {
 			_, err := blockStorage.GetHeadBlockIdentifier(ctx)
 			switch {
@@ -1343,13 +1343,13 @@ func (t *DataTester) recursiveOpSearch(
 	}
 
 	if err == nil || errors.Is(err, context.Canceled) {
-		if startIndex <= t.genesisBlock.Index {
+		if startIndex <= 1 {
 			return nil, cliErrs.ErrUnableToFindMissingOps
 		}
 
 		newStart := startIndex - InactiveFailureLookbackWindow
-		if newStart < t.genesisBlock.Index {
-			newStart = t.genesisBlock.Index
+		if newStart < 1 {
+			newStart = 1
 		}
 
 		newEnd := endIndex - InactiveFailureLookbackWindow

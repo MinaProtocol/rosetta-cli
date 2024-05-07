@@ -311,7 +311,7 @@ func ComputeCheckDataProgress(
 
 	genesisBlockIndex := int64(0)
 	if networkStatus.GenesisBlockIdentifier != nil {
-		genesisBlockIndex = networkStatus.GenesisBlockIdentifier.Index
+		genesisBlockIndex = int64(1)
 	}
 
 	// Get current tip in the case that re-orgs occurred

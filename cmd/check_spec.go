@@ -391,7 +391,7 @@ func (cs *checkSpec) getAccount(ctx context.Context) (
 	var acct *types.AccountIdentifier
 	var blockID *types.PartialBlockIdentifier
 	tip := res.CurrentBlockIdentifier.Index
-	genesis := res.GenesisBlockIdentifier.Index
+	genesis := int64(1)
 	currencies := []*types.Currency{}
 
 	for i := tip; i >= genesis && acct == nil; i-- {
