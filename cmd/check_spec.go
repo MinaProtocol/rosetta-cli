@@ -19,12 +19,12 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/coinbase/rosetta-cli/pkg/results"
+	"github.com/MinaProtocol/rosetta-cli/pkg/results"
 	"github.com/coinbase/rosetta-sdk-go/fetcher"
 	"github.com/coinbase/rosetta-sdk-go/types"
 	"github.com/spf13/cobra"
 
-	cliErrs "github.com/coinbase/rosetta-cli/pkg/errors"
+	cliErrs "github.com/MinaProtocol/rosetta-cli/pkg/errors"
 )
 
 var (

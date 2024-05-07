@@ -22,9 +22,9 @@ import (
 	"path"
 	"testing"
 
-	"github.com/coinbase/rosetta-cli/configuration"
+	"github.com/MinaProtocol/rosetta-cli/configuration"
 
-	cliErrs "github.com/coinbase/rosetta-cli/pkg/errors"
+	cliErrs "github.com/MinaProtocol/rosetta-cli/pkg/errors"
 	"github.com/coinbase/rosetta-sdk-go/asserter"
 	"github.com/coinbase/rosetta-sdk-go/fetcher"
 	sdkMocks "github.com/coinbase/rosetta-sdk-go/mocks/storage/modules"

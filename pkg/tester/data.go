@@ -24,12 +24,12 @@ import (
 	"net/http"
 	"time"
 
-	cliErrs "github.com/coinbase/rosetta-cli/pkg/errors"
+	cliErrs "github.com/MinaProtocol/rosetta-cli/pkg/errors"
 
-	"github.com/coinbase/rosetta-cli/configuration"
-	"github.com/coinbase/rosetta-cli/pkg/logger"
-	"github.com/coinbase/rosetta-cli/pkg/processor"
-	"github.com/coinbase/rosetta-cli/pkg/results"
+	"github.com/MinaProtocol/rosetta-cli/configuration"
+	"github.com/MinaProtocol/rosetta-cli/pkg/logger"
+	"github.com/MinaProtocol/rosetta-cli/pkg/processor"
+	"github.com/MinaProtocol/rosetta-cli/pkg/results"
 	"github.com/coinbase/rosetta-sdk-go/fetcher"
 	"github.com/coinbase/rosetta-sdk-go/parser"
 	"github.com/coinbase/rosetta-sdk-go/reconciler"

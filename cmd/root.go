@@ -17,7 +17,6 @@ package cmd
 import (
 	"context"
 	"fmt"
-	"github.com/coinbase/rosetta-sdk-go/types"
 	"log"
 	"os"
 	"os/signal"
@@ -26,7 +25,9 @@ import (
 	"runtime/pprof"
 	"syscall"
 
-	"github.com/coinbase/rosetta-cli/configuration"
+	"github.com/coinbase/rosetta-sdk-go/types"
+
+	"github.com/MinaProtocol/rosetta-cli/configuration"
 
 	"github.com/coinbase/rosetta-sdk-go/utils"
 	"github.com/fatih/color"

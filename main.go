@@ -17,7 +17,7 @@ package main
 import (
 	"os"
 
-	"github.com/coinbase/rosetta-cli/cmd"
+	"github.com/MinaProtocol/rosetta-cli/cmd"
 
 	"github.com/fatih/color"
 )

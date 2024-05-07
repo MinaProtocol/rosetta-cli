@@ -23,7 +23,7 @@ import (
 	"runtime"
 	"strings"
 
-	cliErrs "github.com/coinbase/rosetta-cli/pkg/errors"
+	cliErrs "github.com/MinaProtocol/rosetta-cli/pkg/errors"
 	"github.com/coinbase/rosetta-sdk-go/asserter"
 	"github.com/coinbase/rosetta-sdk-go/constructor/dsl"
 	"github.com/coinbase/rosetta-sdk-go/constructor/job"

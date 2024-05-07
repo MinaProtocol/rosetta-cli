@@ -19,8 +19,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/coinbase/rosetta-cli/pkg/results"
-	t "github.com/coinbase/rosetta-cli/pkg/tester"
+	"github.com/MinaProtocol/rosetta-cli/pkg/results"
+	t "github.com/MinaProtocol/rosetta-cli/pkg/tester"
 	"github.com/spf13/cobra"
 	"golang.org/x/sync/errgroup"
 )
