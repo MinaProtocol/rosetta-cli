@@ -77,8 +77,7 @@ func twoModes() checkSpecOutput {
 	}
 
 	if isEmpty(Config.OnlineURL) ||
-		isEmpty(Config.Construction.OfflineURL) ||
-		isEqual(Config.OnlineURL, Config.Construction.OfflineURL) {
+		isEmpty(Config.Construction.OfflineURL) {
 		setValidationStatusFailed(output, diffURLs)
 	}
 
